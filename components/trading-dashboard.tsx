@@ -46,7 +46,10 @@ export function TradingDashboard() {
 
   // Real-time WebSocket connections
   const { tickerData, getTickerData, isConnected: tickerConnected, connectionStatus } = useBinanceWebSocket(TOKENS)
-  const { orderBook, isConnected: orderBookConnected } = useRealTimeOrderBook(selectedToken)
+  const { orderBook, isConnected: orderBookConnected } = useRealTimeOrderBook({
+    ...selectedToken,
+    price: getTickerData(selectedToken.binanceSymbol)?.price || 0,
+  })
   const { trades, isConnected: tradesConnected } = useRealTimeTrades(selectedToken)
   const { klines, isConnected: klinesConnected } = useRealTimeKlines(selectedToken, "5m")
   const { orders, balances, positions } = useTrading()
