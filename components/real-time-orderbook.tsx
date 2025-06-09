@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 
 interface OrderBookEntry {
   price: number
@@ -23,6 +23,8 @@ interface RealTimeOrderBookProps {
 
 export function RealTimeOrderBook({ orderBook, isConnected }: RealTimeOrderBookProps) {
   const [highlightedRows, setHighlightedRows] = useState<Set<string>>(new Set())
+  const asksRef = useRef<HTMLDivElement>(null)
+  const bidsRef = useRef<HTMLDivElement>(null)
 
   // Highlight changed rows
   useEffect(() => {
@@ -48,6 +50,16 @@ export function RealTimeOrderBook({ orderBook, isConnected }: RealTimeOrderBookP
     return () => clearTimeout(timeout)
   }, [orderBook])
 
+  // Scroll to top when order book updates
+  useEffect(() => {
+    if (asksRef.current) {
+      asksRef.current.scrollTop = 0
+    }
+    if (bidsRef.current) {
+      bidsRef.current.scrollTop = 0
+    }
+  }, [orderBook?.lastUpdateId])
+
   if (!orderBook) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -59,64 +71,69 @@ export function RealTimeOrderBook({ orderBook, isConnected }: RealTimeOrderBookP
     )
   }
 
+  // Sort asks in descending order and bids in ascending order
+  const sortedAsks = [...orderBook.asks].sort((a, b) => b.price - a.price).slice(0, 8)
+  const sortedBids = [...orderBook.bids].sort((a, b) => b.price - a.price).slice(0, 8)
+
+  // Calculate max totals for percentage bars
+  const maxAskTotal = Math.max(...sortedAsks.map(a => a.total))
+  const maxBidTotal = Math.max(...sortedBids.map(b => b.total))
+
   return (
     <div className="h-full flex flex-col">
       {/* Header with real-time indicator */}
-      <div className="px-3 py-2 border-b border-slate-700 bg-slate-800/50">
+      <div className="px-2 py-1 border-b border-slate-700 bg-slate-800/50">
         <div className="flex items-center justify-between">
-          <div className="grid grid-cols-3 gap-2 text-xs text-slate-400 flex-1">
-            <span>Price ({orderBook.asks[0]?.price > 1 ? "2" : "6"} decimals)</span>
+          <div className="grid grid-cols-3 gap-1 text-[10px] text-slate-400 flex-1">
+            <span>Price</span>
             <span className="text-right">Size</span>
             <span className="text-right">Total</span>
           </div>
-          <div className="flex items-center ml-2">
+          <div className="flex items-center ml-1">
             <div
-              className={`w-2 h-2 rounded-full animate-pulse ${isConnected ? "bg-green-500" : "bg-yellow-500"}`}
+              className={`w-1.5 h-1.5 rounded-full animate-pulse ${isConnected ? "bg-green-500" : "bg-yellow-500"}`}
             ></div>
-            <span className="text-xs text-slate-400 ml-1">{isConnected ? "LIVE" : "SIM"}</span>
+            <span className="text-[10px] text-slate-400 ml-1">{isConnected ? "LIVE" : "SIM"}</span>
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-hidden">
         {/* Asks (Sell Orders) */}
-        <div className="h-1/2 overflow-y-auto">
-          <div className="px-3 py-1">
-            {orderBook.asks
-              .slice()
-              .reverse()
-              .map((ask, i) => {
-                const isHighlighted = highlightedRows.has(`ask-${ask.price}`)
-                return (
+        <div ref={asksRef} className="h-1/2 overflow-y-auto">
+          <div className="px-2 py-0.5">
+            {sortedAsks.map((ask, i) => {
+              const isHighlighted = highlightedRows.has(`ask-${ask.price}`)
+              return (
+                <div
+                  key={`ask-${ask.price}-${i}`}
+                  className={`grid grid-cols-3 gap-1 text-[10px] font-mono py-0.5 hover:bg-slate-800/50 cursor-pointer relative transition-all duration-200 ${
+                    isHighlighted ? "bg-red-500/20 animate-pulse" : ""
+                  }`}
+                >
                   <div
-                    key={`ask-${ask.price}-${i}`}
-                    className={`grid grid-cols-3 gap-2 text-xs font-mono py-0.5 hover:bg-slate-800/50 cursor-pointer relative transition-all duration-200 ${
-                      isHighlighted ? "bg-red-500/20 animate-pulse" : ""
-                    }`}
-                  >
-                    <div
-                      className="absolute inset-y-0 right-0 bg-red-500/10 transition-all duration-300"
-                      style={{
-                        width: `${Math.min(100, (ask.total / Math.max(...orderBook.asks.map((a) => a.total))) * 100)}%`,
-                      }}
-                    />
-                    <span className="text-red-400 relative z-10 transition-colors duration-200">
-                      {ask.price.toFixed(ask.price > 1 ? 2 : 6)}
-                    </span>
-                    <span className="text-right text-slate-300 relative z-10">{ask.size.toFixed(4)}</span>
-                    <span className="text-right text-slate-400 relative z-10">{ask.total.toFixed(4)}</span>
-                  </div>
-                )
-              })}
+                    className="absolute inset-y-0 right-0 bg-red-500/10 transition-all duration-300"
+                    style={{
+                      width: `${Math.min(100, (ask.total / maxAskTotal) * 100)}%`,
+                    }}
+                  />
+                  <span className="text-red-400 relative z-10 transition-colors duration-200">
+                    {ask.price.toFixed(ask.price > 1 ? 2 : 6)}
+                  </span>
+                  <span className="text-right text-slate-300 relative z-10">{ask.size.toFixed(2)}</span>
+                  <span className="text-right text-slate-400 relative z-10">{ask.total.toFixed(2)}</span>
+                </div>
+              )
+            })}
           </div>
         </div>
 
         {/* Spread with real-time animation */}
-        <div className="px-3 py-2 border-y border-slate-700 bg-slate-800/30">
-          <div className="text-xs text-center">
-            <div className="flex items-center justify-center space-x-2">
+        <div className="px-2 py-1 border-y border-slate-700 bg-slate-800/30">
+          <div className="text-[10px] text-center">
+            <div className="flex items-center justify-center space-x-1">
               <span className="text-slate-400">Spread</span>
-              <span className="font-mono text-slate-300 bg-slate-700 px-2 py-1 rounded">
+              <span className="font-mono text-slate-300 bg-slate-700 px-1.5 py-0.5 rounded">
                 {orderBook.spread.toFixed(6)}
               </span>
               <span className="text-slate-400">({orderBook.spreadPercent.toFixed(3)}%)</span>
@@ -126,28 +143,28 @@ export function RealTimeOrderBook({ orderBook, isConnected }: RealTimeOrderBookP
         </div>
 
         {/* Bids (Buy Orders) */}
-        <div className="h-1/2 overflow-y-auto">
-          <div className="px-3 py-1">
-            {orderBook.bids.map((bid, i) => {
+        <div ref={bidsRef} className="h-1/2 overflow-y-auto">
+          <div className="px-2 py-0.5">
+            {sortedBids.map((bid, i) => {
               const isHighlighted = highlightedRows.has(`bid-${bid.price}`)
               return (
                 <div
                   key={`bid-${bid.price}-${i}`}
-                  className={`grid grid-cols-3 gap-2 text-xs font-mono py-0.5 hover:bg-slate-800/50 cursor-pointer relative transition-all duration-200 ${
+                  className={`grid grid-cols-3 gap-1 text-[10px] font-mono py-0.5 hover:bg-slate-800/50 cursor-pointer relative transition-all duration-200 ${
                     isHighlighted ? "bg-green-500/20 animate-pulse" : ""
                   }`}
                 >
                   <div
                     className="absolute inset-y-0 right-0 bg-green-500/10 transition-all duration-300"
                     style={{
-                      width: `${Math.min(100, (bid.total / Math.max(...orderBook.bids.map((b) => b.total))) * 100)}%`,
+                      width: `${Math.min(100, (bid.total / maxBidTotal) * 100)}%`,
                     }}
                   />
                   <span className="text-green-400 relative z-10 transition-colors duration-200">
                     {bid.price.toFixed(bid.price > 1 ? 2 : 6)}
                   </span>
-                  <span className="text-right text-slate-300 relative z-10">{bid.size.toFixed(4)}</span>
-                  <span className="text-right text-slate-400 relative z-10">{bid.total.toFixed(4)}</span>
+                  <span className="text-right text-slate-300 relative z-10">{bid.size.toFixed(2)}</span>
+                  <span className="text-right text-slate-400 relative z-10">{bid.total.toFixed(2)}</span>
                 </div>
               )
             })}
@@ -156,8 +173,8 @@ export function RealTimeOrderBook({ orderBook, isConnected }: RealTimeOrderBookP
       </div>
 
       {/* Real-time footer */}
-      <div className="px-3 py-2 border-t border-slate-700 bg-slate-800/30">
-        <div className="flex items-center justify-between text-xs text-slate-400">
+      <div className="px-2 py-1 border-t border-slate-700 bg-slate-800/30">
+        <div className="flex items-center justify-between text-[10px] text-slate-400">
           <span>Last Update: {new Date(orderBook.lastUpdateId).toLocaleTimeString()}</span>
           <div className="flex items-center">
             <div
