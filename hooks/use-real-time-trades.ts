@@ -28,11 +28,13 @@ export function useRealTimeTrades(token: Token) {
   const [trades, setTrades] = useState<TradeData[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
+  const lastUpdateRef = useRef<number>(Date.now())
 
   // Generate fallback trades
   const generateFallbackTrades = useCallback((basePrice: number) => {
     const fallbackTrades: TradeData[] = []
     const now = Date.now()
+    lastUpdateRef.current = now
 
     for (let i = 0; i < 50; i++) {
       const price = basePrice + (Math.random() - 0.5) * basePrice * 0.01
@@ -58,13 +60,15 @@ export function useRealTimeTrades(token: Token) {
     const price = basePrice + (Math.random() - 0.5) * basePrice * 0.001
     const size = Math.random() * 5 + 0.1
     const side = Math.random() > 0.5 ? "buy" : "sell"
+    const now = Date.now()
+    lastUpdateRef.current = now
 
     const newTrade: TradeData = {
-      id: `sim_trade_${Date.now()}_${Math.random()}`,
+      id: `sim_trade_${now}_${Math.random()}`,
       price,
       size,
       side,
-      timestamp: Date.now(),
+      timestamp: now,
     }
 
     setTrades((prevTrades) => [newTrade, ...prevTrades.slice(0, 49)])
@@ -83,6 +87,7 @@ export function useRealTimeTrades(token: Token) {
       wsRef.current.onopen = () => {
         console.log(`✅ Trades WebSocket connected for ${token.symbol}`)
         setIsConnected(true)
+        lastUpdateRef.current = Date.now()
       }
 
       wsRef.current.onmessage = (event) => {
@@ -93,6 +98,8 @@ export function useRealTimeTrades(token: Token) {
             const price = Number.parseFloat(data.p)
             const size = Number.parseFloat(data.q)
             const side = data.m ? "sell" : "buy" // If buyer is maker, then it's a sell
+            const now = Date.now()
+            lastUpdateRef.current = now
 
             if (!isNaN(price) && !isNaN(size) && price > 0 && size > 0) {
               const newTrade: TradeData = {
@@ -100,7 +107,7 @@ export function useRealTimeTrades(token: Token) {
                 price,
                 size,
                 side,
-                timestamp: data.T,
+                timestamp: now,
               }
 
               setTrades((prevTrades) => [newTrade, ...prevTrades.slice(0, 49)])
@@ -165,6 +172,7 @@ export function useRealTimeTrades(token: Token) {
   return {
     trades,
     isConnected,
+    lastUpdateTime: lastUpdateRef.current,
     reconnect: connectTradesWebSocket,
   }
 }

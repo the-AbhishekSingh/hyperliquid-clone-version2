@@ -50,7 +50,7 @@ export function TradingDashboard() {
     ...selectedToken,
     price: getTickerData(selectedToken.binanceSymbol)?.price || 0,
   })
-  const { trades, isConnected: tradesConnected } = useRealTimeTrades(selectedToken)
+  const { trades, isConnected: tradesConnected, lastUpdateTime } = useRealTimeTrades(selectedToken)
   const { klines, isConnected: klinesConnected } = useRealTimeKlines(selectedToken, "5m")
   const { orders, balances, positions } = useTrading()
 
@@ -353,8 +353,8 @@ export function TradingDashboard() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="trades" className="flex-1">
-                <RealTimeTrades trades={trades} isConnected={tradesConnected} selectedToken={selectedToken} />
+              <TabsContent value="trades" className="h-full">
+                <RealTimeTrades trades={trades} isConnected={tradesConnected} lastUpdateTime={lastUpdateTime} />
               </TabsContent>
 
               <TabsContent value="more" className="flex-1 p-4">

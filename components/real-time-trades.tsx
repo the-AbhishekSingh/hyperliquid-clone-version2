@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import type { Token } from "@/data/tokens"
 
 interface TradeData {
@@ -12,80 +12,117 @@ interface TradeData {
 }
 
 interface RealTimeTradesProps {
-  trades: TradeData[]
+  trades: TradeData[] | null
   isConnected: boolean
-  selectedToken: Token
+  lastUpdateTime: number
 }
 
-export function RealTimeTrades({ trades, isConnected, selectedToken }: RealTimeTradesProps) {
-  const [highlightedTrades, setHighlightedTrades] = useState<Set<string>>(new Set())
+export function RealTimeTrades({ trades, isConnected, lastUpdateTime }: RealTimeTradesProps) {
+  const [highlightedRows, setHighlightedRows] = useState<Set<string>>(new Set())
+  const tradesRef = useRef<HTMLDivElement>(null)
 
   // Highlight new trades
   useEffect(() => {
-    if (trades.length === 0) return
+    if (!trades || trades.length === 0) return
 
+    const newHighlights = new Set<string>()
     const latestTrade = trades[0]
-    if (latestTrade) {
-      setHighlightedTrades(new Set([latestTrade.id]))
+    newHighlights.add(`${latestTrade.id}`)
 
-      // Clear highlight after animation
-      const timeout = setTimeout(() => {
-        setHighlightedTrades(new Set())
-      }, 1000)
+    setHighlightedRows(newHighlights)
 
-      return () => clearTimeout(timeout)
-    }
+    // Clear highlights after animation
+    const timeout = setTimeout(() => {
+      setHighlightedRows(new Set())
+    }, 500)
+
+    return () => clearTimeout(timeout)
   }, [trades])
 
+  // Scroll to top when new trades arrive
+  useEffect(() => {
+    if (tradesRef.current) {
+      tradesRef.current.scrollTop = 0
+    }
+  }, [trades?.length])
+
+  if (!trades) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+          <p className="text-slate-400 text-sm">Loading trades...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Only show the last 8 trades
+  const recentTrades = trades.slice(0, 8)
+
   const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString("en-US", {
-      hour12: false,
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    })
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString()
+  }
+
+  const formatLastUpdate = (timestamp: number) => {
+    const now = Date.now()
+    const diff = now - timestamp
+    const seconds = Math.floor(diff / 1000)
+    
+    if (seconds < 60) {
+      return `${seconds}s ago`
+    } else if (seconds < 3600) {
+      const minutes = Math.floor(seconds / 60)
+      return `${minutes}m ago`
+    } else {
+      const hours = Math.floor(seconds / 3600)
+      return `${hours}h ago`
+    }
   }
 
   return (
     <div className="h-full flex flex-col">
       {/* Header with real-time indicator */}
-      <div className="px-3 py-2 border-b border-slate-700 bg-slate-800/50">
+      <div className="px-2 py-1 border-b border-slate-700 bg-slate-800/50">
         <div className="flex items-center justify-between">
-          <div className="grid grid-cols-3 gap-2 text-xs text-slate-400 flex-1">
-            <span>Price ({selectedToken.quoteAsset})</span>
-            <span className="text-right">Size ({selectedToken.baseAsset})</span>
+          <div className="grid grid-cols-3 gap-1 text-[10px] text-slate-400 flex-1">
+            <span>Price</span>
+            <span className="text-right">Size</span>
             <span className="text-right">Time</span>
           </div>
-          <div className="flex items-center ml-2">
+          <div className="flex items-center ml-1">
             <div
-              className={`w-2 h-2 rounded-full animate-pulse ${isConnected ? "bg-green-500" : "bg-yellow-500"}`}
+              className={`w-1.5 h-1.5 rounded-full animate-pulse ${isConnected ? "bg-green-500" : "bg-yellow-500"}`}
             ></div>
-            <span className="text-xs text-slate-400 ml-1">{isConnected ? "LIVE" : "SIM"}</span>
+            <span className="text-[10px] text-slate-400 ml-1">{isConnected ? "LIVE" : "SIM"}</span>
           </div>
         </div>
       </div>
 
-      {/* Trades list */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="px-3 py-1">
-          {trades.map((trade) => {
-            const isHighlighted = highlightedTrades.has(trade.id)
-            const isBuy = trade.side === "buy"
-
+      {/* Trades List */}
+      <div ref={tradesRef} className="flex-1 overflow-y-auto">
+        <div className="px-2 py-0.5">
+          {recentTrades.map((trade) => {
+            const isHighlighted = highlightedRows.has(trade.id)
             return (
               <div
                 key={trade.id}
-                className={`grid grid-cols-3 gap-2 text-xs font-mono py-1 hover:bg-slate-800/50 transition-all duration-300 ${
-                  isHighlighted ? `${isBuy ? "bg-green-500/20" : "bg-red-500/20"} animate-pulse` : ""
+                className={`grid grid-cols-3 gap-1 text-[10px] font-mono py-0.5 hover:bg-slate-800/50 cursor-pointer relative transition-all duration-200 ${
+                  isHighlighted ? "bg-slate-700/50 animate-pulse" : ""
                 }`}
               >
-                <span className={`transition-colors duration-200 ${isBuy ? "text-green-400" : "text-red-400"}`}>
-                  {Number.parseFloat(trade.price.toString()).toFixed(
-                    Number.parseFloat(trade.price.toString()) > 1 ? 2 : 6,
-                  )}
+                <span
+                  className={`relative z-10 transition-colors duration-200 ${
+                    trade.side === "buy" ? "text-green-400" : "text-red-400"
+                  }`}
+                >
+                  {trade.price.toFixed(trade.price > 1 ? 2 : 6)}
                 </span>
-                <span className="text-right text-slate-300">{Number.parseFloat(trade.size.toString()).toFixed(4)}</span>
-                <span className="text-right text-slate-400">{formatTime(trade.timestamp)}</span>
+                <span className="text-right text-slate-300 relative z-10">{trade.size.toFixed(2)}</span>
+                <span className="text-right text-slate-400 relative z-10">
+                  {formatTime(trade.timestamp)}
+                </span>
               </div>
             )
           })}
@@ -93,9 +130,9 @@ export function RealTimeTrades({ trades, isConnected, selectedToken }: RealTimeT
       </div>
 
       {/* Real-time footer */}
-      <div className="px-3 py-2 border-t border-slate-700 bg-slate-800/30">
-        <div className="flex items-center justify-between text-xs text-slate-400">
-          <span>Trades: {trades.length}</span>
+      <div className="px-2 py-1 border-t border-slate-700 bg-slate-800/30">
+        <div className="flex items-center justify-between text-[10px] text-slate-400">
+          <span>Last Update: {formatLastUpdate(lastUpdateTime)}</span>
           <div className="flex items-center">
             <div
               className={`w-1 h-1 rounded-full mr-1 ${isConnected ? "bg-green-500 animate-pulse" : "bg-yellow-500"}`}
