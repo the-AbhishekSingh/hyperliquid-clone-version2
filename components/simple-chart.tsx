@@ -23,7 +23,7 @@ export function SimpleChart({ token, height = 500 }: SimpleChartProps) {
   const [isInitialLoading, setIsInitialLoading] = useState(false)
   const [isUsingRealData, setIsUsingRealData] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationFrameRef = useRef<number>()
+  const animationFrameRef = useRef<number | undefined>(undefined)
   const initRef = useRef(false)
   const { marketData } = useBinanceData(token)
 

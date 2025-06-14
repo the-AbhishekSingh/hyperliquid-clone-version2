@@ -1,7 +1,10 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import type { Token } from "@/data/tokens"
+import type { Token as BaseToken } from "@/data/tokens"
+
+// Extend Token to include price
+export type TokenWithPrice = BaseToken & { price: number }
 
 interface OrderBookEntry {
   price: number
@@ -27,7 +30,7 @@ interface WebSocketDepthData {
   a: [string, string][] // Asks
 }
 
-export function useRealTimeOrderBook(token: Token) {
+export function useRealTimeOrderBook(token: TokenWithPrice) {
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null)
   const [isConnected, setIsConnected] = useState(false)
   const wsRef = useRef<WebSocket | null>(null)
@@ -143,9 +146,7 @@ export function useRealTimeOrderBook(token: Token) {
       console.log(`Updating order book for ${token.symbol} with new price:`, token.price)
       priceRef.current = token.price
       const updatedOrderBook = generateFallbackOrderBook(token.price)
-      if (updatedOrderBook) {
-        setOrderBook(updatedOrderBook)
-      }
+      setOrderBook(updatedOrderBook)
     }
   }, [token.price, isConnected, orderBook, token.symbol])
 
@@ -249,7 +250,7 @@ export function useRealTimeOrderBook(token: Token) {
 
             // Update bids
             const updatedBids = [...prevOrderBook.bids]
-            bids.forEach((bid) => {
+            bids.forEach((bid: OrderBookEntry) => {
               const index = updatedBids.findIndex((b) => b.price === bid.price)
               if (index !== -1) {
                 if (bid.size === 0) {
@@ -264,7 +265,7 @@ export function useRealTimeOrderBook(token: Token) {
 
             // Update asks
             const updatedAsks = [...prevOrderBook.asks]
-            asks.forEach((ask) => {
+            asks.forEach((ask: OrderBookEntry) => {
               const index = updatedAsks.findIndex((a) => a.price === ask.price)
               if (index !== -1) {
                 if (ask.size === 0) {
@@ -323,6 +324,40 @@ export function useRealTimeOrderBook(token: Token) {
 
     wsRef.current = ws
   }, [token.binanceSymbol, token.symbol])
+
+  const processOrderBookUpdate = (data: any) => {
+    if (data.bids && data.asks) {
+      const newOrderBook: OrderBookData = {
+        bids: [],
+        asks: [],
+        spread: 0,
+        spreadPercent: 0,
+        lastUpdateId: 0
+      };
+
+      if (Array.isArray(data.bids)) {
+        data.bids.forEach((bid: OrderBookEntry) => {
+          newOrderBook.bids.push({
+            price: Number(bid.price),
+            size: Number(bid.size),
+            total: 0
+          });
+        });
+      }
+
+      if (Array.isArray(data.asks)) {
+        data.asks.forEach((ask: OrderBookEntry) => {
+          newOrderBook.asks.push({
+            price: Number(ask.price),
+            size: Number(ask.size),
+            total: 0
+          });
+        });
+      }
+
+      setOrderBook(newOrderBook);
+    }
+  };
 
   return {
     orderBook,

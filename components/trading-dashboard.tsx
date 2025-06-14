@@ -26,7 +26,7 @@ import {
 } from "lucide-react"
 import { TOKENS, type Token } from "@/data/tokens"
 import { useBinanceWebSocket } from "@/hooks/use-binance-websocket"
-import { useRealTimeOrderBook } from "@/hooks/use-real-time-orderbook"
+import { useRealTimeOrderBook, TokenWithPrice } from "@/hooks/use-real-time-orderbook"
 import { useRealTimeTrades } from "@/hooks/use-real-time-trades"
 import { useRealTimeKlines } from "@/hooks/use-real-time-klines"
 import { useTrading } from "@/hooks/use-trading"
@@ -43,13 +43,14 @@ export function TradingDashboard() {
   const [bottomPanelTab, setBottomPanelTab] = useState("balances")
   const [showAnnouncements, setShowAnnouncements] = useState(true)
   const [lastUpdate, setLastUpdate] = useState(Date.now())
+  const [mounted, setMounted] = useState(false)
 
   // Real-time WebSocket connections
   const { tickerData, getTickerData, isConnected: tickerConnected, connectionStatus } = useBinanceWebSocket(TOKENS)
   const { orderBook, isConnected: orderBookConnected } = useRealTimeOrderBook({
     ...selectedToken,
     price: getTickerData(selectedToken.binanceSymbol)?.price || 0,
-  })
+  } as TokenWithPrice)
   const { trades, isConnected: tradesConnected, lastUpdateTime } = useRealTimeTrades(selectedToken)
   const { klines, isConnected: klinesConnected } = useRealTimeKlines(selectedToken, "5m")
   const { orders, balances, positions } = useTrading()
@@ -61,6 +62,10 @@ export function TradingDashboard() {
     }, 1000)
 
     return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    setMounted(true)
   }, [])
 
   // Get current token data
@@ -123,8 +128,8 @@ export function TradingDashboard() {
       <div className="min-h-screen bg-slate-900 text-white">
         {/* Top Navigation */}
         <header className="border-b border-slate-800 bg-slate-900/95 backdrop-blur">
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center space-x-6">
+          <div className="flex flex-col md:flex-row items-center justify-between px-4 py-3 space-y-4 md:space-y-0">
+            <div className="flex flex-col md:flex-row items-center space-y-4 md:space-y-0 md:space-x-6 w-full md:w-auto">
               <div className="flex items-center space-x-2">
                 <div className="w-6 h-6 bg-gradient-to-r from-cyan-400 to-blue-500 rounded"></div>
                 <span className="font-semibold text-lg">Hyperliquid</span>
@@ -135,7 +140,7 @@ export function TradingDashboard() {
                   <span className="text-xs text-slate-300">{connectionInfo.text}</span>
                 </div>
               </div>
-              <nav className="flex items-center space-x-6">
+              <nav className="flex flex-wrap justify-center md:justify-start items-center gap-2 md:gap-6">
                 <Button variant="ghost" className="text-cyan-400 bg-cyan-400/10">
                   Trade
                 </Button>
@@ -182,9 +187,9 @@ export function TradingDashboard() {
 
         {/* Market Header */}
         <div className="border-b border-slate-800 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-4">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between space-y-4 lg:space-y-0">
+            <div className="flex flex-col lg:flex-row items-start lg:items-center space-y-4 lg:space-y-0 lg:space-x-6 w-full lg:w-auto">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
                 <TokenSelector
                   selectedToken={selectedToken}
                   onTokenSelect={setSelectedToken}
@@ -211,7 +216,7 @@ export function TradingDashboard() {
               </div>
 
               {/* Market data grid */}
-              <div className="grid grid-cols-3 gap-6 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 text-sm w-full sm:w-auto">
                 <div>
                   <div className="text-slate-400">24h Change</div>
                   <div
@@ -243,19 +248,26 @@ export function TradingDashboard() {
                 </div>
               </div>
             </div>
-            <div className="text-sm flex items-center space-x-4">
+            <div className="text-sm flex flex-col sm:flex-row items-start sm:items-center space-y-2 sm:space-y-0 sm:space-x-4">
               <div>
                 <span className="text-slate-400">Contract:</span>
                 <span className="font-mono ml-1">0x6d01...11ec</span>
               </div>
-              <div className="text-xs text-slate-500">Last Update: {new Date(lastUpdate).toLocaleTimeString()}</div>
+              <div className="text-xs text-slate-500">
+                Last Update: {mounted ? new Date(lastUpdate).toLocaleTimeString('en-US', {
+                  hour12: false,
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit'
+                }) : '--:--:--'}
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="flex h-[calc(100vh-200px)]">
+        <div className="flex flex-col lg:flex-row h-[calc(100vh-200px)]">
           {/* Left Sidebar - Chart Tools */}
-          <div className="w-12 border-r border-slate-800 bg-slate-900/50 flex flex-col items-center py-4 space-y-4">
+          <div className="hidden lg:flex w-12 border-r border-slate-800 bg-slate-900/50 flex-col items-center py-4 space-y-4">
             <Button variant="ghost" size="sm" className="w-8 h-8 p-0">
               <BarChart3 className="w-4 h-4" />
             </Button>
@@ -285,9 +297,9 @@ export function TradingDashboard() {
           {/* Main Chart Area */}
           <div className="flex-1 flex flex-col">
             {/* Chart Controls */}
-            <div className="border-b border-slate-800 px-4 py-2 flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
+            <div className="border-b border-slate-800 px-4 py-2 flex flex-col sm:flex-row items-start sm:items-center justify-between space-y-2 sm:space-y-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {["1", "5", "15", "30", "60", "240", "1D"].map((timeframe) => (
                     <Button
                       key={timeframe}
@@ -315,13 +327,13 @@ export function TradingDashboard() {
             </div>
 
             {/* Chart */}
-            <div className="flex-1">
+            <div className="flex-1 min-h-[300px]">
               <RealTimeChart token={selectedToken} klines={klines} marketData={marketData} height={500} />
             </div>
 
             {/* Time Controls */}
-            <div className="border-t border-slate-800 px-4 py-2 flex items-center justify-between text-xs">
-              <div className="flex items-center space-x-4">
+            <div className="border-t border-slate-800 px-4 py-2 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs space-y-2 sm:space-y-0">
+              <div className="flex flex-wrap items-center gap-2">
                 {["5y", "1y", "6m", "3m", "1m", "5d", "1d"].map((period) => (
                   <Button key={period} variant="ghost" size="sm" className="text-xs h-6">
                     {period}
@@ -333,7 +345,7 @@ export function TradingDashboard() {
           </div>
 
           {/* Right Sidebar */}
-          <div className="w-80 border-l border-slate-800 bg-slate-900/50 flex flex-col">
+          <div className="w-full lg:w-80 border-t lg:border-l border-slate-800 bg-slate-900/50 flex flex-col">
             {/* Right Panel Tabs */}
             <Tabs value={rightPanelTab} onValueChange={setRightPanelTab} className="flex-1 flex flex-col">
               <TabsList className="grid w-full grid-cols-3 bg-slate-800">
@@ -367,8 +379,8 @@ export function TradingDashboard() {
         {/* Bottom Panel */}
         <div className="border-t border-slate-800 bg-slate-900/50">
           <Tabs value={bottomPanelTab} onValueChange={setBottomPanelTab} className="w-full">
-            <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800">
-              <TabsList className="bg-slate-800">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 py-2 border-b border-slate-800 space-y-2 sm:space-y-0">
+              <TabsList className="bg-slate-800 overflow-x-auto">
                 <TabsTrigger value="balances">Balances</TabsTrigger>
                 <TabsTrigger value="positions">Positions</TabsTrigger>
                 <TabsTrigger value="orders">Open Orders</TabsTrigger>

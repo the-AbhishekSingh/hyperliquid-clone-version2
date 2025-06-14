@@ -22,8 +22,8 @@ export function useBinanceWebSocket(tokens: Token[]) {
     "disconnected",
   )
   const wsRef = useRef<WebSocket | null>(null)
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout>()
-  const updateIntervalRef = useRef<NodeJS.Timeout>()
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
+  const updateIntervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const reconnectAttemptsRef = useRef(0)
   const maxReconnectAttempts = 3
 
