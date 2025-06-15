@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +35,14 @@ import { RealTimeChart } from "@/components/real-time-chart"
 import { RealTimeOrderBook } from "@/components/real-time-orderbook"
 import { TradingPanel } from "@/components/trading-panel"
 import { RealTimeTrades } from "@/components/real-time-trades"
+import { useWeb3 } from "@/app/providers/web3-provider"
+import { SiEthereum } from "react-icons/si"
+import { OrderForm } from './order-form';
+import { OrderBook } from './order-book';
+import { Orders } from './orders';
+import { Positions } from './positions';
+import { Balance } from '../types/trading';
+import { formatNumber } from '../lib/utils';
 
 export function TradingDashboard() {
   const [selectedToken, setSelectedToken] = useState<Token>(TOKENS[0]) // Default to BTC/USDT
@@ -42,8 +50,19 @@ export function TradingDashboard() {
   const [rightPanelTab, setRightPanelTab] = useState("orderbook")
   const [bottomPanelTab, setBottomPanelTab] = useState("balances")
   const [showAnnouncements, setShowAnnouncements] = useState(true)
-  const [lastUpdate, setLastUpdate] = useState(Date.now())
+  const [lastUpdate, setLastUpdate] = useState<number>(0)
   const [mounted, setMounted] = useState(false)
+  const { 
+    connect, 
+    disconnect, 
+    isConnecting,
+    error,
+    balance,
+    isDummyAccount,
+    createDummyAccount,
+    account,
+    isConnected,
+  } = useWeb3();
 
   // Real-time WebSocket connections
   const { tickerData, getTickerData, isConnected: tickerConnected, connectionStatus } = useBinanceWebSocket(TOKENS)
@@ -53,15 +72,33 @@ export function TradingDashboard() {
   } as TokenWithPrice)
   const { trades, isConnected: tradesConnected, lastUpdateTime } = useRealTimeTrades(selectedToken)
   const { klines, isConnected: klinesConnected } = useRealTimeKlines(selectedToken, "5m")
-  const { orders, balances, positions } = useTrading()
+  const { 
+    orders, 
+    balances: tradingBalances, 
+    positions,
+    error: wsError,
+    isConnected: wsConnected 
+  } = useTrading(
+    process.env.NEXT_PUBLIC_API_KEY || '',
+    process.env.NEXT_PUBLIC_API_SECRET || '',
+    process.env.NEXT_PUBLIC_WS_URL || 'wss://api.hyperliquid.xyz/ws',
+    selectedToken.symbol
+  )
 
-  // Force re-render every second to show live updates
+  const [localBalances, setLocalBalances] = useState<Balance[]>([]);
+  const [isLoadingBalances, setIsLoadingBalances] = useState(true);
+  const [totalBalance, setTotalBalance] = useState(0);
+
+  // Update time only on client side
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (typeof window !== 'undefined') {
       setLastUpdate(Date.now())
-    }, 1000)
+      const timer = setInterval(() => {
+        setLastUpdate(Date.now())
+      }, 1000)
 
-    return () => clearInterval(interval)
+      return () => clearInterval(timer)
+    }
   }, [])
 
   useEffect(() => {
@@ -69,30 +106,19 @@ export function TradingDashboard() {
   }, [])
 
   // Get current token data
-  const currentTokenData = getTickerData(selectedToken.binanceSymbol)
+  const currentTokenData = {
+    symbol: selectedToken.symbol,
+    price: 43250,
+    change24h: 1250,
+    changePercent24h: 2.98,
+    volume24h: 2500000000,
+    high24h: 44100,
+    low24h: 42000,
+    openPrice: 42000,
+  }
 
   // Create market data object with real-time updates
   const marketData = currentTokenData
-    ? {
-        symbol: selectedToken.symbol,
-        price: currentTokenData.price,
-        change24h: currentTokenData.change24h,
-        changePercent24h: currentTokenData.changePercent24h,
-        volume24h: currentTokenData.volume24h,
-        high24h: currentTokenData.high24h,
-        low24h: currentTokenData.low24h,
-        openPrice: currentTokenData.openPrice,
-      }
-    : {
-        symbol: selectedToken.symbol,
-        price: 43250,
-        change24h: 1250,
-        changePercent24h: 2.98,
-        volume24h: 2500000000,
-        high24h: 44100,
-        low24h: 42000,
-        openPrice: 42000,
-      }
 
   const formatNumber = (num: number, decimals = 2) => {
     if (!num || isNaN(num)) return "0.00"
@@ -111,17 +137,75 @@ export function TradingDashboard() {
 
   // Connection status indicator
   const getConnectionStatus = () => {
-    const connectedCount = [tickerConnected, orderBookConnected, tradesConnected, klinesConnected].filter(
-      Boolean,
-    ).length
-    const totalConnections = 4
-
-    if (connectedCount === totalConnections) return { status: "connected", color: "bg-green-500", text: "LIVE" }
-    if (connectedCount > 0) return { status: "partial", color: "bg-yellow-500", text: "PARTIAL" }
     return { status: "simulated", color: "bg-blue-500", text: "SIMULATED" }
   }
 
   const connectionInfo = getConnectionStatus()
+
+  // Update the useEffect for balances
+  useEffect(() => {
+    const fetchBalances = async () => {
+      if (!account) {
+        setLocalBalances([]);
+        setIsLoadingBalances(false);
+        setTotalBalance(0);
+        return;
+      }
+
+      try {
+        setIsLoadingBalances(true);
+        const response = await fetch(`/api/balances?address=${account}`);
+        if (!response.ok) throw new Error('Failed to fetch balances');
+        const data = await response.json();
+        setLocalBalances(data);
+        // Calculate total balance
+        const total = data.reduce((sum: number, balance: Balance) => sum + balance.usdValue, 0);
+        setTotalBalance(total);
+      } catch (error) {
+        console.error('Error fetching balances:', error);
+        setLocalBalances([]);
+        setTotalBalance(0);
+      } finally {
+        setIsLoadingBalances(false);
+      }
+    };
+
+    fetchBalances();
+  }, [account]);
+
+  const handlePlaceOrder = async (side: 'buy' | 'sell', type: string, size: number, price?: number, proSettings?: any) => {
+    // Implement order placement logic
+    console.log('Placing order:', { side, type, size, price, proSettings });
+  };
+
+  const handleCancelOrder = async (orderId: string) => {
+    // Implement order cancellation logic
+    console.log('Canceling order:', orderId);
+  };
+
+  const handleClosePosition = async (symbol: string, type: 'market' | 'limit', price?: number) => {
+    // Implement position closing logic
+    console.log('Closing position:', { symbol, type, price });
+  };
+
+  const handleGetEstimate = async (side: 'buy' | 'sell', type: string, size: number, price?: number) => {
+    // Implement order estimation logic
+    return {
+      cost: 0,
+      fee: 0,
+      slippage: 0
+    };
+  };
+
+  const formatAddress = (address: string) => {
+    if (!address) return 'Not Connected'
+    return `${address.slice(0, 6)}...${address.slice(-4)}`
+  }
+
+  // Only render content after component is mounted
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <ErrorBoundary>
@@ -165,9 +249,50 @@ export function TradingDashboard() {
               </nav>
             </div>
             <div className="flex items-center space-x-3">
-              <Button variant="outline" size="sm" className="border-cyan-500 text-cyan-400">
-                Connect
-              </Button>
+              <div className="flex items-center gap-4">
+                {!isConnected ? (
+                    <Button
+                        onClick={connect}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2"
+                    >
+                        <SiEthereum className="w-5 h-5" />
+                        <span>Connect Wallet</span>
+                    </Button>
+                ) : (
+                    <div className="flex items-center gap-2">
+                        <div className="flex flex-col items-end">
+                            <span className="text-sm text-gray-400">
+                                {formatAddress(account)}
+                            </span>
+                            <span className="text-xs text-green-400">
+                                ${formatNumber(totalBalance)} {isDummyAccount ? '(Dummy)' : ''}
+                            </span>
+                        </div>
+                        <Button
+                            onClick={disconnect}
+                            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg"
+                        >
+                            Disconnect
+                        </Button>
+                    </div>
+                )}
+                {error && (
+                  <div className="text-red-400 text-sm">
+                    {error.includes('install') ? (
+                      <a
+                        href="https://metamask.io/download/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline hover:text-red-300"
+                      >
+                        {error}
+                      </a>
+                    ) : (
+                      error
+                    )}
+                  </div>
+                )}
+              </div>
               <Button variant="ghost" size="sm">
                 <Globe className="w-4 h-4" />
               </Button>
@@ -254,12 +379,7 @@ export function TradingDashboard() {
                 <span className="font-mono ml-1">0x6d01...11ec</span>
               </div>
               <div className="text-xs text-slate-500">
-                Last Update: {mounted ? new Date(lastUpdate).toLocaleTimeString('en-US', {
-                  hour12: false,
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit'
-                }) : '--:--:--'}
+                Last Update: {lastUpdate ? new Date(lastUpdate).toLocaleTimeString() : '--:--:--'}
               </div>
             </div>
           </div>
@@ -401,25 +521,31 @@ export function TradingDashboard() {
             </div>
 
             <TabsContent value="balances" className="p-4">
-              <div className="grid grid-cols-5 gap-4 text-xs text-slate-400 mb-3">
-                <span>Coin</span>
-                <span>Total Balance</span>
-                <span>Available Balance</span>
-                <span>USDC Value</span>
-                <span>Contract</span>
+              <div className="grid grid-cols-5 gap-4 text-xs text-gray-400 mb-2">
+                <span>Asset</span>
+                <span className="text-right">Total</span>
+                <span className="text-right">Available</span>
+                <span className="text-right">In Orders</span>
+                <span className="text-right">USD Value</span>
               </div>
-              {balances.length > 0 ? (
-                balances.map((balance) => (
+              {isLoadingBalances ? (
+                <div className="text-center py-4 text-gray-400">
+                  Loading balances...
+                </div>
+              ) : localBalances.length > 0 ? (
+                localBalances.map((balance) => (
                   <div key={balance.asset} className="grid grid-cols-5 gap-4 text-sm py-2 border-b border-slate-800">
                     <span className="font-mono">{balance.asset}</span>
-                    <span className="font-mono">{balance.total.toFixed(4)}</span>
-                    <span className="font-mono">{balance.available.toFixed(4)}</span>
-                    <span className="font-mono">${balance.usdValue.toFixed(2)}</span>
-                    <span className="text-slate-400">Spot</span>
+                    <span className="text-right font-mono">{formatNumber(balance.total)}</span>
+                    <span className="text-right font-mono">{formatNumber(balance.available)}</span>
+                    <span className="text-right font-mono">{formatNumber(balance.inOrders)}</span>
+                    <span className="text-right font-mono">${formatNumber(balance.usdValue)}</span>
                   </div>
                 ))
               ) : (
-                <div className="text-sm text-slate-300">No balances yet</div>
+                <div className="text-center py-4 text-gray-400">
+                  No balances found
+                </div>
               )}
             </TabsContent>
 
@@ -438,13 +564,13 @@ export function TradingDashboard() {
                     <div key={position.id} className="grid grid-cols-6 gap-4 text-sm py-2 border-b border-slate-800">
                       <span className="font-mono">{position.symbol}</span>
                       <span className={position.side === "long" ? "text-green-400" : "text-red-400"}>
-                        {position.side.toUpperCase()}
+                        {position.side ? position.side.toUpperCase() : 'N/A'}
                       </span>
-                      <span className="font-mono">{position.size.toFixed(4)}</span>
-                      <span className="font-mono">${position.entryPrice.toFixed(2)}</span>
-                      <span className="font-mono">${position.markPrice.toFixed(2)}</span>
+                      <span className="font-mono">{position.size?.toFixed(4) || '0.0000'}</span>
+                      <span className="font-mono">${position.entryPrice?.toFixed(2) || '0.00'}</span>
+                      <span className="font-mono">${position.markPrice?.toFixed(2) || '0.00'}</span>
                       <span className={position.pnl > 0 ? "text-green-400" : "text-red-400"}>
-                        ${position.pnl.toFixed(2)} ({position.pnlPercent.toFixed(2)}%)
+                        ${position.pnl?.toFixed(2) || '0.00'} ({position.pnlPercent?.toFixed(2) || '0.00'}%)
                       </span>
                     </div>
                   ))}

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { Web3Provider } from './providers/web3-provider'
+import { Toaster } from 'react-hot-toast'
 
 export const metadata: Metadata = {
   title: 'v0 App',
@@ -19,6 +20,7 @@ export default function RootLayout({
         <Web3Provider>
           {children}
         </Web3Provider>
+        <Toaster position="top-right" />
       </body>
     </html>
   )

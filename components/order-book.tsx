@@ -1,90 +1,69 @@
 "use client"
 
-interface OrderBookEntry {
-  price: number
-  size: number
-  total: number
-}
-
-interface ProcessedOrderBook {
-  asks: OrderBookEntry[]
-  bids: OrderBookEntry[]
-  spread: number
-  spreadPercent: number
-}
+import React from 'react';
+import { OrderBook as OrderBookType } from '../types/trading';
 
 interface OrderBookProps {
-  orderBook: ProcessedOrderBook
+  data: OrderBookType | null;
 }
 
-export function OrderBook({ orderBook }: OrderBookProps) {
+const formatPrice = (price: number) => {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(price);
+};
+
+const formatSize = (size: number) => {
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4
+  }).format(size);
+};
+
+export function OrderBook({ data }: OrderBookProps) {
+  const renderLevel = (level: [number, number], isAsk: boolean) => {
+    if (!level || level.length !== 2) return null;
+    const [price, size] = level;
+    return (
+      <div
+        key={price}
+        className={`flex justify-between px-2 py-1 text-sm ${
+          isAsk ? 'text-red-500' : 'text-green-500'
+        }`}
+      >
+        <span>{formatPrice(price)}</span>
+        <span>{formatSize(size)}</span>
+      </div>
+    );
+  };
+
+  if (!data || !data.asks || !data.bids) {
+    return (
+      <div className="h-full flex items-center justify-center text-gray-500">
+        Loading order book...
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col">
-      <div className="px-3 py-2 border-b border-slate-700">
-        <div className="grid grid-cols-3 gap-2 text-xs text-slate-400">
-          <span>Price ({orderBook.asks[0]?.price > 1 ? "2" : "6"} decimals)</span>
-          <span className="text-right">Size</span>
-          <span className="text-right">Total</span>
-        </div>
+      {/* Bids (Buy orders) */}
+      <div className="space-y-px">
+        {data.bids.map(level => renderLevel(level, false))}
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        {/* Asks (Sell Orders) */}
-        <div className="h-1/2 overflow-y-auto">
-          <div className="px-3 py-1">
-            {orderBook.asks
-              .slice()
-              .reverse()
-              .map((ask, i) => (
-                <div
-                  key={i}
-                  className="grid grid-cols-3 gap-2 text-xs font-mono py-0.5 hover:bg-slate-800/50 cursor-pointer relative"
-                >
-                  <div
-                    className="absolute inset-y-0 right-0 bg-red-500/10"
-                    style={{
-                      width: `${Math.min(100, (ask.total / Math.max(...orderBook.asks.map((a) => a.total))) * 100)}%`,
-                    }}
-                  />
-                  <span className="text-red-400 relative z-10">{ask.price.toFixed(ask.price > 1 ? 2 : 6)}</span>
-                  <span className="text-right text-slate-300 relative z-10">{ask.size.toFixed(4)}</span>
-                  <span className="text-right text-slate-400 relative z-10">{ask.total.toFixed(4)}</span>
-                </div>
-              ))}
-          </div>
-        </div>
-
-        {/* Spread */}
-        <div className="px-3 py-2 border-y border-slate-700 bg-slate-800/30">
-          <div className="text-xs text-center">
-            <span className="text-slate-400">Spread</span>
-            <span className="ml-2 text-slate-300">{orderBook.spread.toFixed(6)}</span>
-            <span className="ml-2 text-slate-400">{orderBook.spreadPercent.toFixed(3)}%</span>
-          </div>
-        </div>
-
-        {/* Bids (Buy Orders) */}
-        <div className="h-1/2 overflow-y-auto">
-          <div className="px-3 py-1">
-            {orderBook.bids.map((bid, i) => (
-              <div
-                key={i}
-                className="grid grid-cols-3 gap-2 text-xs font-mono py-0.5 hover:bg-slate-800/50 cursor-pointer relative"
-              >
-                <div
-                  className="absolute inset-y-0 right-0 bg-green-500/10"
-                  style={{
-                    width: `${Math.min(100, (bid.total / Math.max(...orderBook.bids.map((b) => b.total))) * 100)}%`,
-                  }}
-                />
-                <span className="text-green-400 relative z-10">{bid.price.toFixed(bid.price > 1 ? 2 : 6)}</span>
-                <span className="text-right text-slate-300 relative z-10">{bid.size.toFixed(4)}</span>
-                <span className="text-right text-slate-400 relative z-10">{bid.total.toFixed(4)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* Asks (Sell orders) */}
+      <div className="space-y-px">
+        {data.asks.slice().reverse().map(level => renderLevel(level, true))}
       </div>
+
+      {/* Spread */}
+      {data.bids.length > 0 && data.asks.length > 0 && (
+        <div className="px-2 py-1 text-sm text-gray-500 border-t border-gray-800">
+          Spread: {formatPrice(data.asks[0][0] - data.bids[0][0])}
+        </div>
+      )}
     </div>
-  )
+  );
 }

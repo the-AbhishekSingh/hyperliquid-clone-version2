@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { Token } from "@/data/tokens"
 
 interface MarketData {
@@ -23,19 +23,27 @@ interface RealTimeChartProps {
 
 export function RealTimeChart({ token, height = 500 }: RealTimeChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [isContainerMounted, setIsContainerMounted] = useState(false)
 
   useEffect(() => {
-    // Remove previous widget if any
     if (containerRef.current) {
-      containerRef.current.innerHTML = ""
+      setIsContainerMounted(true)
     }
+  }, [])
+
+  useEffect(() => {
+    if (!isContainerMounted || !containerRef.current) return
+
+    // Remove previous widget if any
+    containerRef.current.innerHTML = ""
+
     // Create script
     const script = document.createElement("script")
     script.src = "https://s3.tradingview.com/tv.js"
     script.async = true
     script.onload = () => {
       // @ts-ignore
-      if (window.TradingView) {
+      if (window.TradingView && containerRef.current) {
         // @ts-ignore
         new window.TradingView.widget({
           autosize: true,
@@ -49,14 +57,19 @@ export function RealTimeChart({ token, height = 500 }: RealTimeChartProps) {
           enable_publishing: false,
           hide_top_toolbar: false,
           hide_legend: false,
-          container_id: containerRef.current?.id || "tv_chart_container",
+          container_id: containerRef.current.id,
         })
       }
     }
-    if (containerRef.current) {
-      containerRef.current.appendChild(script)
+
+    containerRef.current.appendChild(script)
+
+    return () => {
+      if (containerRef.current) {
+        containerRef.current.innerHTML = ""
+      }
     }
-  }, [token.binanceSymbol])
+  }, [token.binanceSymbol, isContainerMounted])
 
   return (
     <div
